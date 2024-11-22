@@ -10,5 +10,5 @@ Homepage: http://lliurex.net
 
 Package: python3-appsedu
 Architecture: all
-Depends: python3,appsedu
+Depends: python3
 Description: Python scrapper for appsedu
