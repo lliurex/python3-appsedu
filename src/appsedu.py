@@ -80,9 +80,9 @@ class manager():
 			auth=i.find("div","acf-view__estat_val-choice acf-view__choice")
 			if auth:
 				reject=i.find("div","acf-view__motiu_de_no_autoritzacio_val-choice acf-view__choice")
-			if reject:
-				application["description"]+="****{}".format(reject.text.strip())
-				application["bundle"]={"eduapp":"banned"}
+				if reject:
+					application["description"]+="****{}".format(reject.text.strip())
+					application["bundle"]={"eduapp":"banned"}
 			groups=i.find("acf-view__usuaris_autoritzats_val-choice acf-view__choice")
 			ident=i.find("acf-view__identitat_val-choice acf-view__choice")
 			ambit=i.find("div","acf-view__ambit_educatiu_val-label acf-view__label")
