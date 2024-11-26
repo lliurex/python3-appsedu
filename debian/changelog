@@ -1,4 +1,4 @@
-python3-appsedu (0.9.0-0llx25) noble; urgency=medium
+python3-appsedu (0.9.0-1lliurex25) noble; urgency=medium
 
   * Python module that offers an api through webscrap of appsedu homepage
   * Initial release.
