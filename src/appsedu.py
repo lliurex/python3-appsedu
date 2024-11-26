@@ -1,14 +1,32 @@
 #!/usr/bin/python3
+import time,os
 import urllib
 from urllib.request import Request
 from urllib.request import urlretrieve
+import requests
+import subprocess
 from bs4 import BeautifulSoup as bs
 # wget https://portal.edu.gva.es/appsedu/aplicacions-lliurex/
 EDUAPPS_URL="https://portal.edu.gva.es/appsedu/aplicacions-lliurex/"
+CACHE=os.path.join(os.environ.get("HOME","/tmp"),".cache","appsedu","index.html")
+CACHEHTML=os.path.join(os.environ.get("HOME","/tmp"),".cache","appsedu","html")
 
 class manager():
 	def __init__(self,*args,**kwargs):
 		self.dbg=True
+		if not "cache" in kwargs:
+			if os.path.isfile(CACHE):
+				try:
+					self._debug("Removing old cache")
+					os.unlink(CACHE)
+				except Exception as e:
+					print(e)
+					pass
+		if os.path.exists(os.path.dirname(CACHE))==False:
+			os.makedirs(os.path.dirname(CACHE))
+		if os.path.exists(CACHEHTML)==False:
+			os.makedirs(CACHEHTML)
+
 	#def __init__
 
 	def _debug(self,msg):
@@ -16,53 +34,173 @@ class manager():
 			dbg="eduapps: {}".format(msg)
 			print(dbg)
 	#def _debug
+	
+	def _readFile(self,fpath):
+		fcontent=""
+		if os.path.exists(fpath):
+			self._debug("Read: {}".format(fpath))
+			try:
+				with open(fpath,"r") as f:
+					fcontent=f.read()
+			except TypeError:
+				with open(fpath,"rb") as f:
+					fcontent=f.read()
+			except Exception as e:
+				print(e)
+		return(fcontent)
+	#def _readFile
 
-	def getApplications(self):
-		self._debug("Fetching {}".format(EDUAPPS_URL))
-		rawcontent=self._fetchUrl(EDUAPPS_URL)
+	def _writeFile(self,fpath,fcontent):
+		if os.path.exists(os.path.dirname(fpath))==False:
+			try:
+				os,makedirs(os.path.dirname(fpath))
+			except Exception as e:
+				print(e)
+			self._debug("Write: {}".format(fpath))
+			try:
+				with open(CACHE,"w") as f:
+					f.write(fcontent)
+			except TypeError:
+				with open(CACHE,"wb") as f:
+					f.write(fcontent)
+			except Exception as e:
+				print(e)
+		return()
+	#def _writeFile
+
+	def getApplications(self,cache=True):
+		if os.path.exists(CACHE) and cache==True:
+			rawcontent=self._readFile(CACHE)
+		else:
+			self._debug("Fetching {}".format(EDUAPPS_URL))
+			rawcontent=self._fetchUrl(EDUAPPS_URL)
+			if cache==True:
+				self._writeFile(CACHE,rawcontent)
 		bscontent=bs(rawcontent,"html.parser")
-		appInfo=bscontent.find_all("td",["column-1","column-2","column-5","column-7"])
+		#Get all <td> that hold application info
+		tdAppArray=bscontent.find_all("td",["column-1","column-2","column-5","column-7"])
 		applications=[]
-		columnAuth=None
-		columnName=[]
-		columnCats=""
-		columnIcon=None
-		for column in appInfo:
-			appName=None
+		tdApp={"cName":[],"cCats":"","cIcon":{},"categories":[],"auth":"","icon":"","url":"","app":""}
+		#Categories is the last column readed. If fullfiled we got all info from td
+		for column in tdAppArray:
+			tdApp["cName"]=""
 			if (column.attrs["class"][0]=="column-1"):
-				columnIcon=column.img
-			if (column.attrs["class"][0]=="column-2"):
-				columnName=column.find_all("a",href=True)
-			if (column.attrs["class"][0]=="column-5"):
-				columnCats=column.text
-			if (column.attrs["class"][0]=="column-7"):
-				columnAuth=column.text
-			for data in columnName:
-				appUrl=data["href"]
-				appName=data.text
-			if appName:
-				if columnIcon==None:
-					print("NO ICON FOR {}".format(appName))
-					continue
-				appIcon=columnIcon["src"]
-				cats=[]
-				for cat in columnCats.split(","):
-					cats.append(cat.strip())
-				applications.append({"app":appName,"icon":appIcon,"auth":columnAuth,"categories":cats,"url":appUrl})
-				columnAuth=None
-				columnName=[]
-				columnCats=""
-				columnIcon=None
+				tdApp["cIcon"]=column.img
+				tdApp["icon"]=tdApp["cIcon"].get("src","")
+			elif (column.attrs["class"][0]=="column-2"):
+				tdApp["cName"]=column.find("a",href=True)
+				tdApp["url"]=tdApp["cName"]["href"]
+				tdApp["app"]=tdApp["cName"].text
+			elif (column.attrs["class"][0]=="column-5"):
+				tdApp["cCats"]=column.text
+				for cat in tdApp["cCats"].split(","):
+					tdApp["categories"].append(cat.strip())
+			elif (column.attrs["class"][0]=="column-7"):
+				tdApp["auth"]=column.text
+			if len(tdApp["auth"])>0: #Process app, there's auth column
+				if tdApp["auth"].startswith("Autorizada - ") or tdApp["auth"].startswith("Autoritzada - ")==False:
+					tdApp["categories"].append("Forbidden")
+				applications.append(tdApp)
+				tdApp={"cName":[],"cCats":"","cIcon":{},"categories":[],"auth":"","icon":"","url":"","app":""}
 		return(applications)
 	#def getApplications
 	
 	def getApplication(self,appUrl):
-		self._debug("Getting details for {}".format(appUrl))
 		application={}
-		rawcontent=self._fetchUrl(appUrl)
+		cFile=os.path.join(CACHEHTML,os.path.basename(appUrl.strip("/")))
+		if os.path.exists(cFile)==True:
+			self._debug("Getting cache for {}".format(cFile))
+			with open(cFile,"rb") as f:
+				rawcontent=f.read()
+		else:
+			self._debug("Getting details for {}".format(appUrl))
+			rawcontent=self._fetchUrl(appUrl)
+			with open(cFile,"wb") as f:
+				f.write(rawcontent)
+		application=self.scrapContent(appUrl,rawcontent)
+		if "icon" not in application:
+			urlopen=False
+			curl=True
+			while "icon" not in application:
+				urlopen=not(urlopen)
+				curl=not(curl)
+				rawcontent=self._fetchUrl(appUrl,urlopen=urlopen,curl=curl)
+				application=self.scrapContent(appUrl,rawcontent)
+				if curl==True:
+					break
+		self._debug("**** END {}****".format(appUrl))
+		return(application)
+	#def getApplication
+
+	def getCategoriesFromApplications(self,applications=[]):
+		if len(applications)==0:
+			applications=self.getApplications()
+		seen=[]
+		appsByCat={}
+		for app in applications:
+			categories=app.get("categories",[])
+			for cat in categories:
+				if len(cat)<3:
+					continue
+			#	if cat=="Forbidden":
+			#		cat="No Disponible"
+				if cat not in appsByCat:
+					appsByCat[cat]=[]
+				appsByCat[cat].append(app)
+		return(appsByCat)
+	#def getCategoriesFromApplications
+	
+	def getApplicationsFromCategory(self,category):
+		categories=self.getCategoriesFromApplications()
+		return(categories.get(category,[""]))
+	#def getApplicationsForCategory
+
+	def searchApplications(self,app):
+		applications=self.getApplications()
+		apps=[]
+		for application in applications:
+			if application["app"].lower().startswith(app.lower()):
+				apps.append(application)
+		self._debug("Search results")
+		self._debug(apps)
+		return(apps)
+	#def searchApplications
+
+	def _fetchUrl(self,url="",headers={},urlopen=False,curl=False):
+		if len(url)==0:
+			url=EDUAPPS_URL
+		content=''
+		if curl==True:
+			try:
+				content=subprocess.check_output(["curl",url],encoding="utf8")
+			except Exception as e:
+				print("Curl: {}".format(e))
+		elif urlopen==True:
+			if not "User-Agent"  in headers:
+				headers.update({'User-Agent':'mozilla/5.0 (X11; Linux x86_64; rv:58.0) Gecko/20100101 Firefox/58.0'})
+			req=Request(url,headers=headers) 
+			try:
+				with urllib.request.urlopen(req,timeout=10) as f:
+					content=f.read().decode('utf-8')
+			except Exception as e:
+				print("Urlopen err: {}".format(e))
+		else:
+			try:
+				response=requests.get(url)
+				content=response.content
+			except Exception as e:
+				print("Request err: {}".format(e))
+		if content=="":
+			print("Couldn't fetch {}".format(url))
+		return(content)
+	#def _fetchUrl
+
+	def scrapContent(self,appUrl,rawcontent):
+		application={}
 		bscontent=bs(rawcontent,"html.parser")
 		b=bscontent.find_all("div","entry-content")
 		for i in b:
+			self._debug("INSPECTING {}".format(appUrl))
 			img=i.find("img")
 			if img:
 				application["icon"]=img["src"]
@@ -87,21 +225,6 @@ class manager():
 			ident=i.find("acf-view__identitat_val-choice acf-view__choice")
 			ambit=i.find("div","acf-view__ambit_educatiu_val-label acf-view__label")
 		return(application)
-	#def getApplication
-
-	def _fetchUrl(self,url=""):
-		if len(url)==0:
-			url=EDUAPPS_URL
-		content=''
-		req=Request(url, headers={'User-Agent':'Mozilla/5.0'})
-		try:
-			with urllib.request.urlopen(req,timeout=10) as f:
-				content=(f.read().decode('utf-8'))
-		except Exception as e:
-			print("Couldn't fetch {}".format(url))
-			print("{}".format(e))
-		return(content)
-	#def _fetchUrl
 
 def main():
 	obj=eduHelper()
