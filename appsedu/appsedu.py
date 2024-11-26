@@ -101,6 +101,8 @@ class manager():
 			if len(tdApp["auth"])>0: #Process app, there's auth column
 				if tdApp["auth"].startswith("Autorizada - ") or tdApp["auth"].startswith("Autoritzada - ")==False:
 					tdApp["categories"].append("Forbidden")
+				elif tdApp["auth"].endswith("- Sistema")==True:
+					tdApp["categories"].append("Preinstalled")
 				applications.append(tdApp)
 				tdApp={"cName":[],"cCats":"","cIcon":{},"categories":[],"auth":"","icon":"","url":"","app":""}
 		return(applications)
