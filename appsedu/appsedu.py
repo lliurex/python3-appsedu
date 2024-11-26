@@ -5,6 +5,7 @@ from urllib.request import Request
 from urllib.request import urlretrieve
 import requests
 import subprocess
+from random import shuffle
 from bs4 import BeautifulSoup as bs
 # wget https://portal.edu.gva.es/appsedu/aplicacions-lliurex/
 EDUAPPS_URL="https://portal.edu.gva.es/appsedu/aplicacions-lliurex/"
@@ -225,6 +226,87 @@ class manager():
 			ident=i.find("acf-view__identitat_val-choice acf-view__choice")
 			ambit=i.find("div","acf-view__ambit_educatiu_val-label acf-view__label")
 		return(application)
+	#def scrapContent
+
+	def getRelatedZomando(self,app):
+		epicPkgs=dict.fromkeys(self._getEpicZomandos())
+		epicPkg=""
+		for epic in epicPkgs.keys():
+			if epic.split(".")[0].lower()==app.lower().replace(" ","-"):
+				epicPkg=self._getPathForEpi(epic)
+			if len(epicPkg)>0:
+				break
+		if len(epicPkg)==0:
+			for epic in epicPkgs.keys():
+				epicPkg=self._searchAppInEpi(app,epic)
+				if len(epicPkg)>0:
+					break
+		return(epicPkg)
+	#def _getPkgsFromEpic(self):
+
+	def _getEpicZomandos(self):
+		cmd=["/usr/sbin/epic","showlist"]
+		epicList=[]
+		renv = os.environ.copy()
+		if len(renv.get("USER",""))==0:
+			renv["USER"]="root"
+		proc=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True,env=renv)
+		output=proc.stdout
+		if "EPIC:" in output:
+			idx=output.index("EPIC:")
+			rawEpicList=output[idx:].replace("EPIC:","")
+			epicList=[ epic.strip() for epic in rawEpicList.split(",") ]
+		shuffle(epicList)
+		return(epicList)
+	#def _getEpicZomandos
+	
+	def _searchAppInEpi(self,app,epic):
+		self._debug("Processing {} for {}".format(epic,app))
+		renv = os.environ.copy()
+		if len(renv.get("USER",""))==0:
+			renv["USER"]="root"
+		if epic.split(".")[0].lower()!=app.lower().replace(" ","-"):
+			cmd=["/usr/sbin/epic","showinfo",epic]
+			proc=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True,env=renv)
+			output=proc.stdout.split("\n")
+			match=False
+			for line in output:
+				if "Packages availables:" in line or "Application:" in line:
+					pkgs=line.split(":")[-1]
+					for pkg in pkgs.split(" "):
+						if len(pkg)>0:
+							if pkg==app.lower():
+								match=True
+								break
+							if pkg.count(".")==2:
+								if pkg.split(".")[-1]==app.lower():
+									match=True
+									break
+
+				if match==True:
+					break
+			if match==False:
+				epic=""
+		return(self._getPathForEpi(epic))
+	#def _searchAppinEpi
+
+	def _getPathForEpi(self,epic):
+		appDir="/usr/share/zero-center/zmds"
+		fpath=""
+		if epic!="":
+			fname=epic.replace(".epi",".zmd")
+			listDir=os.scandir(appDir)
+			for f in listDir:
+				if f.path.endswith(fname):
+					fpath=f.path
+					break
+			if len(fpath)==0:
+				for f in lstDir:
+						if (fname.split(".")[0] in f) or (fname.split("-")[0] in f):
+							fpath=f.path
+							break
+		return(fpath)
+	#def _getZmdFromEpi
 
 def main():
 	obj=eduHelper()
