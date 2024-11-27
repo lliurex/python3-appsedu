@@ -99,7 +99,7 @@ class manager():
 			elif (column.attrs["class"][0]=="column-7"):
 				tdApp["auth"]=column.text
 			if len(tdApp["auth"])>0: #Process app, there's auth column
-				if tdApp["auth"].startswith("Autorizada - ") or tdApp["auth"].startswith("Autoritzada - ")==False:
+				if (tdApp["auth"].startswith("Autorizada - ") or tdApp["auth"].startswith("Autoritzada - "))==False:
 					tdApp["categories"].append("Forbidden")
 				elif tdApp["auth"].endswith("- Sistema")==True:
 					tdApp["categories"].append("Preinstalled")
@@ -158,12 +158,17 @@ class manager():
 		return(categories.get(category,[""]))
 	#def getApplicationsForCategory
 
-	def searchApplications(self,app):
+	def searchApplications(self,app,lazy=True):
 		applications=self.getApplications()
+		lazyApps=[]
 		apps=[]
 		for application in applications:
 			if application["app"].lower().startswith(app.lower()):
 				apps.append(application)
+			elif lazy==True:
+				if app.lower() in application["app"].lower():
+					lazyApps.append(application)
+		apps.extend(lazyApps)
 		self._debug("Search results")
 		self._debug(apps)
 		return(apps)
